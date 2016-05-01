@@ -2,20 +2,42 @@ const brainfuck = (code, stdin) => {
   const data = [];
   const input = stdin.split('');
 
-  console.log('code:', code);
-  console.log('stdin:', `[${stdin}]`);
-  console.log('input.length:', input.length);
-
+  let skip = null;
   let output = '';
+  let direction = 1;
   let ip = 0; // instruction pointer
   let dp = 30001; // data pointer
-  let opc = 0; // operation counter
   while (dp > 0) data[--dp] = 0; // initialise to 30,000 bytes
 
+  const moveIP = () => { ip += direction; };
+
   while (true) {
-    const char = code[ip++];
+    const char = code[ip];
     if (typeof char === 'undefined') break;
-    // console.log(`>> interpreting "${char}" at ${ip}/${dp} (${++opc}) ${data[dp]}`);
+
+    // handle [] loops properly
+    if (skip) {
+      if (char === '[') {
+        if (direction === 1) skip.depth++;
+        else if (direction === -1 && skip.depth > 0) skip.depth--;
+        else if (direction === -1 && skip.depth === 0) {
+          skip = null;
+          direction = 1;
+        }
+      }
+
+      if (char === ']') {
+        if (direction === -1) skip.depth++;
+        else if (direction === 1 && skip.depth > 0) skip.depth--;
+        else if (direction === 1 && skip.depth === 0) {
+          skip = null;
+          direction = 1;
+        }
+      }
+
+      moveIP();
+      continue;
+    }
 
     switch (char) {
       // increment the data pointer (to point to the next cell to the right)
@@ -35,8 +57,7 @@ const brainfuck = (code, stdin) => {
 
       // decrement (decrease by one, treat as unsigned byte: 0 - 1 = 255) the byte at the data pointer
       case '-':
-        if (data[dp] === 0) data[dp] = 255;
-        else data[dp]--;
+        if (--data[dp] < 0) data[dp] = 255;
         break;
 
       // output the byte at the data pointer
@@ -52,39 +73,27 @@ const brainfuck = (code, stdin) => {
       // if the byte at the data pointer is zero, then instead of moving the instruction pointer forward to the next command,
       // jump it forward to the command after the matching ] command
       case '[':
+        // data[dp] == 0: jump to cmd after matching ]
+        // data[dp] <> 0 : move forward as usual
         if (data[dp] === 0) {
-          let c = code[++ip];
-
-          let layers = 0;
-          let searching = true;
-          while (searching) {
-            c = code[++ip];
-            if (c === '[') layers++;
-            else if (c === ']' && layers > 0) layers--;
-            if (c !== '[' && layers === 0) searching = false;
-          }
-          ip++;
+          skip = { depth: 0 };
+          direction = 1;
         }
         break;
 
       // if the byte at the data pointer is nonzero, then instead of moving the instruction pointer forward to the next command,
       // jump it back to the command after the matching [ command
       case ']':
+        // data[dp] <> 0: jump back to cmd after matching [
+        // data[dp] == 0 : move forward as usual
         if (data[dp] !== 0) {
-          let c = code[ip - 2];
-
-          let layers = 0;
-          let searching = true;
-          while (searching) {
-            c = code[--ip];
-            if (c === ']') layers++;
-            else if (c === '[' && layers > 0) layers--;
-            if (c !== '[' && layers === 0) searching = false;
-          }
-          ip++;
+          skip = { depth: 0 };
+          direction = -1;
         }
         break;
     }
+
+    moveIP();
   }
 
   return output
